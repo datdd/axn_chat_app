@@ -1,3 +1,6 @@
+#ifndef COMMON_PROTOCOL_H
+#define COMMON_PROTOCOL_H
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -37,7 +40,7 @@ constexpr size_t HEADER_SIZE = sizeof(uint8_t) + sizeof(uint32_t) * 3; // Messag
 
 struct Message {
   MessageHeader header;
-  std::vector<uint8_t> payload;
+  std::vector<char> payload;
 };
 
 /**
@@ -46,7 +49,7 @@ struct Message {
  * @param msg The Message object to serialize.
  * @return A vector of bytes representing the serialized message.
  */
-std::vector<char> serialize(const Message& msg);
+std::vector<char> serialize_message(const Message& msg);
 
 /**
  * @brief Deserializes a byte vector into a Message object.
@@ -54,7 +57,9 @@ std::vector<char> serialize(const Message& msg);
  * @param data The byte vector to deserialize.
  * @return An optional Message object if deserialization is successful, otherwise std::nullopt.
  */
-std::pair<std::optional<Message>, size_t> deserialize(const std::vector<char>& buffer);
+std::pair<std::optional<Message>, size_t> deserialize_message(const std::vector<char>& buffer);
 
 } // namespace common
 } // namespace chat_app
+
+#endif // COMMON_PROTOCOL_H

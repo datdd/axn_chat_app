@@ -1,10 +1,11 @@
-#ifndef AXN_CHAT_APP_COMMON_SOCKER_H
-#define AXN_CHAT_APP_COMMON_SOCKER_H
+#ifndef COMMON_SOCKET_H
+#define COMMON_SOCKET_H
 
 #include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
+#include <ostream>
 
 namespace chat_app {
 namespace common {
@@ -15,6 +16,27 @@ struct SocketResult {
   SocketStatus status;
   std::size_t bytes_transferred;
 };
+
+inline std::ostream &operator<<(std::ostream &os, const SocketStatus &status) {
+  switch (status) {
+  case SocketStatus::OK:
+    os << "OK";
+    break;
+  case SocketStatus::WOULD_BLOCK:
+    os << "WOULD_BLOCK";
+    break;
+  case SocketStatus::CLOSED:
+    os << "CLOSED";
+    break;
+  case SocketStatus::ERROR:
+    os << "ERROR";
+    break;
+  default:
+    os << "UNKNOWN";
+    break;
+  }
+  return os;
+}
 
 class IStreamSocket; // Forward declaration
 
@@ -76,4 +98,4 @@ private:
 } // namespace common
 } // namespace chat_app
 
-#endif // AXN_CHAT_APP_COMMON_SOCKER_H
+#endif // COMMON_SOCKET_H

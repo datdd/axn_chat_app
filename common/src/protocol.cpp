@@ -5,7 +5,7 @@
 namespace chat_app {
 namespace common {
 
-std::vector<char> serialize(const Message &msg) {
+std::vector<char> serialize_message(const Message &msg) {
   std::vector<char> buffer(HEADER_SIZE + msg.payload.size());
   auto *header = reinterpret_cast<MessageHeader *>(buffer.data());
 
@@ -19,7 +19,7 @@ std::vector<char> serialize(const Message &msg) {
   return buffer;
 }
 
-std::pair<std::optional<Message>, size_t> deserialize(const std::vector<char> &buffer) {
+std::pair<std::optional<Message>, size_t> deserialize_message(const std::vector<char> &buffer) {
   if (buffer.size() < HEADER_SIZE) {
     return {std::nullopt, 0};
   }
