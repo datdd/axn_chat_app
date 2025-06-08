@@ -10,6 +10,8 @@
 namespace chat_app {
 namespace common {
 
+#define COMMON_POSIX_SOCKET_COMPONENT "PosixSocket"
+
 enum class SocketStatus { OK, WOULD_BLOCK, CLOSED, ERROR };
 
 struct SocketResult {
@@ -57,7 +59,7 @@ public:
   virtual ~IStreamSocket() = default;
 
   virtual SocketResult send_data(const std::vector<char> &data) = 0;
-  virtual SocketResult receive_data(std::vector<char> &buffer, std::size_t size = 4096) = 0;
+  virtual SocketResult receive_data(std::vector<char> &buffer) = 0;
   virtual void close_socket() = 0;
   virtual bool is_valid() const = 0;
   virtual int get_fd() const = 0;
@@ -77,7 +79,7 @@ public:
 
   // IStreamSocket methods
   SocketResult send_data(const std::vector<char> &data) override;
-  SocketResult receive_data(std::vector<char> &buffer, std::size_t size) override;
+  SocketResult receive_data(std::vector<char> &buffer) override;
 
   // IListeningSocket methods
   bool bind_socket(int port) override;
