@@ -50,6 +50,7 @@ public:
   virtual bool listen_socket(int backlog) = 0;
   virtual std::unique_ptr<IStreamSocket> accept_connection() = 0;
   virtual void close_socket() = 0;
+  virtual bool is_valid() const = 0;
   virtual int get_fd() const = 0;
   virtual void set_non_blocking(bool non_blocking) = 0;
 };

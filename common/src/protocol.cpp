@@ -56,7 +56,7 @@ std::pair<std::optional<Message>, size_t> deserialize_message(const std::vector<
     return {std::nullopt, 0}; // Incomplete message
   }
 
-  // We have a full message, so parse it completely.
+  // Create a Message object to hold the deserialized data
   Message msg;
 
   // 2. Deserialize Type
