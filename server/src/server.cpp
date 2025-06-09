@@ -24,7 +24,7 @@ void Server::run() {
   // Register the listener socket with epoll
   // Use EPOLLET for edge-triggered mode
   epoll_manager_.add_fd(listener_->get_fd(), EPOLLIN | EPOLLET);
-  
+
   running_ = true;
   LOG_INFO(SERVER_COMPONENT, "Server started on port {}. Waiting for new connections ...", port_);
 
@@ -58,7 +58,7 @@ void Server::run() {
  * Accepts the connection, sets it to non-blocking mode, and registers it with epoll.
  */
 void Server::handle_new_connection() {
-  while(auto client_socket = listener_->accept_connection()) {
+  while (auto client_socket = listener_->accept_connection()) {
     client_socket->set_non_blocking(true);
     int fd = client_socket->get_fd();
     LOG_INFO(SERVER_COMPONENT, "New connection accepted: FD = {}", fd);
@@ -82,7 +82,7 @@ void Server::handle_client_message(int fd) {
   }
 
   std::vector<char> buffer(4096);
-  auto& read_buffer = session->get_read_buffer();
+  auto &read_buffer = session->get_read_buffer();
 
   while (true) {
     auto result = session->get_socket()->receive_data(buffer);
@@ -119,7 +119,8 @@ void Server::handle_client_message(int fd) {
  */
 void Server::handle_client_disconnection(int fd) {
   auto session = client_manager_.get_client_by_fd(fd);
-  if (!session) return;
+  if (!session)
+    return;
 
   LOG_INFO(SERVER_COMPONENT, "Client disconnected: ID = {}, FD = {}", session->get_id(), fd);
 
@@ -147,82 +148,127 @@ void Server::handle_client_disconnection(int fd) {
  */
 void Server::process_message(ClientSession &session, const common::Message &message) {
   switch (message.header.type) {
-    case common::MessageType::C2S_JOIN: {
-      // Handle join message
-      if (!session.is_authenticated()) {
-        std::string username(message.payload.begin(), message.payload.end());
-        if (client_manager_.is_username_taken(username)) {
-          common::Message response;
-          std::string error_message = "Username already taken";
-          response.header.type = common::MessageType::S2C_JOIN_FAILURE;
-          response.header.sender_id = common::SERVER_ID;
-          response.header.receiver_id = session.get_id();
-          response.payload.assign(error_message.begin(), error_message.end());
-          response.header.payload_size = static_cast<uint32_t>(response.payload.size());
-          session.get_socket()->send_data(common::serialize_message(response));
+  case common::MessageType::C2S_JOIN: {
+    process_join_message(session, message);
+    break;
+  }
+  case common::MessageType::C2S_BROADCAST: {
+    process_broadcast_message(session, message);
+    break;
+  }
+  case common::MessageType::C2S_PRIVATE: {
+    process_private_message(session, message);
+    break;
+  }
+  case common::MessageType::C2S_LEAVE: {
+    handle_client_disconnection(session.get_fd());
+    break;
+  }
+  default:
+    LOG_WARNING(SERVER_COMPONENT, "Received unknown message type: {}", static_cast<uint8_t>(message.header.type));
+  }
+}
 
-          // Force disconnect
-          handle_client_disconnection(session.get_fd());
-        } else {
-          session.set_username(username);
-          session.set_authenticated(true);
-          
-          common::Message response;
-          std::string welcome_message = "Welcome to the chat, " + username + "!";
-          response.header.type = common::MessageType::S2C_JOIN_SUCCESS;
-          response.header.sender_id = common::SERVER_ID;
-          response.header.receiver_id = session.get_id();
-          response.payload.assign(welcome_message.begin(), welcome_message.end());
-          response.header.payload_size = static_cast<uint32_t>(response.payload.size());
-          session.get_socket()->send_data(common::serialize_message(response));
+void Server::process_join_message(ClientSession &session, const common::Message &message) {
+  // Handle join message
+  if (!session.is_authenticated()) {
+    std::string username(message.payload.begin(), message.payload.end());
+    if (client_manager_.is_username_taken(username)) {
+      common::Message response;
+      std::string error_message = "Username already taken";
+      response.header.type = common::MessageType::S2C_JOIN_FAILURE;
+      response.header.sender_id = common::SERVER_ID;
+      response.header.receiver_id = session.get_id();
+      response.payload.assign(error_message.begin(), error_message.end());
+      response.header.payload_size = static_cast<uint32_t>(response.payload.size());
+      session.get_socket()->send_data(common::serialize_message(response));
 
-          // Notify other clients about the new user
-          common::Message user_joined_message;
-          user_joined_message.header.type = common::MessageType::S2C_USER_JOINED;
-          user_joined_message.header.sender_id = session.get_id();
-          user_joined_message.header.receiver_id = common::BROADCAST_ID;
-          user_joined_message.payload.assign(username.begin(), username.end());
-          user_joined_message.header.payload_size = static_cast<uint32_t>(user_joined_message.payload.size());
-          client_manager_.broadcast_message(user_joined_message, session.get_id());
-          
+      // Force disconnect
+      handle_client_disconnection(session.get_fd());
+    } else {
+      session.set_username(username);
+      session.set_authenticated(true);
+
+      common::Message response;
+      std::string welcome_message = "Welcome to the chat, " + username + "!";
+      response.header.type = common::MessageType::S2C_JOIN_SUCCESS;
+      response.header.sender_id = common::SERVER_ID;
+      response.header.receiver_id = session.get_id();
+      response.payload.assign(welcome_message.begin(), welcome_message.end());
+      response.header.payload_size = static_cast<uint32_t>(response.payload.size());
+      session.get_socket()->send_data(common::serialize_message(response));
+
+      // Send the list of currently connected users to the new client
+      std::vector<std::string> user_list;
+      for (const auto &client : client_manager_.get_all_clients()) {
+        if (client->is_authenticated() && client->get_id() != session.get_id()) {
+          user_list.push_back(client->get_username() + ":" + std::to_string(client->get_id()));
         }
       }
-      break;
-    }
-    case common::MessageType::C2S_BROADCAST: {
-      // Handle broadcast message
-      if (session.is_authenticated()) {
-        common::Message broadcast_message = message;
-        broadcast_message.header.type = common::MessageType::S2C_BROADCAST;
-        broadcast_message.header.sender_id = session.get_id();
-        broadcast_message.header.receiver_id = common::BROADCAST_ID;
-        broadcast_message.payload = message.payload;
-        broadcast_message.header.payload_size = message.header.payload_size;
-        client_manager_.broadcast_message(broadcast_message, session.get_id());
+      if (!user_list.empty()) {
+        std::string user_list_str;
+        for (const auto &user : user_list) {
+          user_list_str += user + ",";
+        }
+        user_list_str.pop_back(); // Remove last comma
+        
+        common::Message user_list_message;
+        user_list_message.header.type = common::MessageType::S2C_USER_JOINED_LIST;
+        user_list_message.header.sender_id = common::SERVER_ID;
+        user_list_message.header.receiver_id = session.get_id();
+        user_list_message.payload.assign(user_list_str.begin(), user_list_str.end());
+        user_list_message.header.payload_size = static_cast<uint32_t>(user_list_message.payload.size());
+        
+        session.get_socket()->send_data(common::serialize_message(user_list_message));
       }
-      break;
-    }
-    case common::MessageType::C2S_PRIVATE: {
-      // Handle private message
-      if (session.is_authenticated()) {
-        // Implement private messaging logic here
-        common::Message private_message = message;
-        private_message.header.type = common::MessageType::S2C_PRIVATE;
-        private_message.header.sender_id = session.get_id();
-        private_message.header.receiver_id = message.header.receiver_id;
-        private_message.payload = message.payload;
-        private_message.header.payload_size = message.header.payload_size;
 
-        auto receiver_session = client_manager_.get_client_by_id(message.header.receiver_id);
-      }
-      break;
+      // Notify other clients about the new user
+      common::Message user_joined_message;
+      user_joined_message.header.type = common::MessageType::S2C_USER_JOINED;
+      user_joined_message.header.sender_id = session.get_id();
+      user_joined_message.header.receiver_id = common::BROADCAST_ID;
+      user_joined_message.payload.assign(username.begin(), username.end());
+      user_joined_message.header.payload_size = static_cast<uint32_t>(user_joined_message.payload.size());
+      client_manager_.broadcast_message(user_joined_message, session.get_id());
     }
-    case common::MessageType::C2S_LEAVE: {
-      handle_client_disconnection(session.get_fd());
-      break;
+  }
+}
+
+void Server::process_broadcast_message(ClientSession &session, const common::Message &message) {
+  if (session.is_authenticated()) {
+    common::Message broadcast_message = message;
+    broadcast_message.header.type = common::MessageType::S2C_BROADCAST;
+    broadcast_message.header.sender_id = session.get_id();
+    broadcast_message.header.receiver_id = common::BROADCAST_ID;
+    broadcast_message.payload = message.payload;
+    broadcast_message.header.payload_size = message.header.payload_size;
+    client_manager_.broadcast_message(broadcast_message, session.get_id());
+  }
+}
+
+void Server::process_private_message(ClientSession &session, const common::Message &message) {
+  if (session.is_authenticated()) {
+    common::Message private_message = message;
+    private_message.header.type = common::MessageType::S2C_PRIVATE;
+    private_message.header.sender_id = session.get_id();
+    private_message.header.receiver_id = message.header.receiver_id;
+    private_message.payload = message.payload;
+    private_message.header.payload_size = message.header.payload_size;
+
+    auto receiver_session = client_manager_.get_client_by_id(message.header.receiver_id);
+    if (receiver_session) {
+      receiver_session->get_socket()->send_data(common::serialize_message(private_message));
+    } else {
+      // If the receiver is not connected, send an error message back to the sender
+      common::Message error_message;
+      error_message.header.type = common::MessageType::S2C_ERROR;
+      error_message.header.sender_id = common::SERVER_ID;
+      error_message.header.receiver_id = session.get_id();
+      std::string error_text = "User not found or not connected.";
+      error_message.payload.assign(error_text.begin(), error_text.end());
+      error_message.header.payload_size = static_cast<uint32_t>(error_text.size());
+      session.get_socket()->send_data(common::serialize_message(error_message));
     }
-    default:
-      LOG_WARNING(SERVER_COMPONENT, "Received unknown message type: {}", static_cast<uint8_t>(message.header.type));
   }
 }
 

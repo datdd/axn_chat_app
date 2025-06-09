@@ -50,6 +50,14 @@ ClientSession *ClientManager::get_client_by_fd(int fd) {
   return nullptr;
 }
 
+std::vector<ClientSession *> ClientManager::get_all_clients() const {
+  std::vector<ClientSession *> clients;
+  for (const auto &[_, session] : session_by_id_) {
+    clients.push_back(session);
+  }
+  return clients;
+}
+
 bool ClientManager::is_username_taken(const std::string &username) const {
   return usernames_.find(username) != usernames_.end();
 }

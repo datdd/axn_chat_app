@@ -28,6 +28,7 @@ enum class MessageType : uint8_t {
   S2C_PRIVATE = 0x13,
   S2C_USER_JOINED = 0x14,
   S2C_USER_LEFT = 0x15,
+  S2C_USER_JOINED_LIST = 0x16,
 
   S2C_ERROR = 0xFF
 };

@@ -22,7 +22,11 @@ private:
   void handle_new_connection();
   void handle_client_message(int fd);
   void handle_client_disconnection(int fd);
+  
   void process_message(ClientSession &session, const common::Message &message);
+  void process_join_message(ClientSession &session, const common::Message &message);
+  void process_broadcast_message(ClientSession &session, const common::Message &message);
+  void process_private_message(ClientSession &session, const common::Message &message);
 
   int port_;
   std::unique_ptr<common::IListeningSocket> listener_;
