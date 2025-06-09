@@ -20,6 +20,8 @@ void ChatClient::run(const std::string &server_address, int server_port) {
   // Send JOIN message request
   common::Message join_message;
   join_message.header.type = common::MessageType::C2S_JOIN;
+  join_message.header.sender_id = common::INVALID_ID;
+  join_message.header.receiver_id = common::SERVER_ID;
   join_message.payload.assign(username_.begin(), username_.end());
   join_message.header.payload_size = static_cast<uint32_t>(join_message.payload.size());
   server_connection_.send_message(join_message);
@@ -107,7 +109,6 @@ void ChatClient::message_handler(const common::Message &message) {
     std::cerr << "[Server Error]: " << error_msg << std::endl;
     break;
   }
-
   case common::MessageType::S2C_USER_JOINED: {
     std::string new_user(message.payload.begin(), message.payload.end());
     std::lock_guard<std::mutex> lock(count_mutex_);
@@ -116,7 +117,6 @@ void ChatClient::message_handler(const common::Message &message) {
     std::cout << "[Server]: User '" << new_user << "' has joined the chat." << std::endl;
     break;
   }
-
   case common::MessageType::S2C_USER_LEFT: {
     if (message.header.sender_id == common::SERVER_ID) {
       std::cout << "You have left the chat." << std::endl;
@@ -131,7 +131,6 @@ void ChatClient::message_handler(const common::Message &message) {
     std::cout << "[Server]: User '" << left_user << "' has left the chat." << std::endl;
     break;
   }
-
   case common::MessageType::S2C_BROADCAST:
   case common::MessageType::S2C_PRIVATE: {
     std::string sender_name =
@@ -141,12 +140,9 @@ void ChatClient::message_handler(const common::Message &message) {
     std::cout << "[" << sender_name << "]: " << payload << std::endl;
     break;
   }
-
   case common::MessageType::S2C_ERROR:
     LOG_ERROR("ChatClient", "Error from server: {}", std::string(message.payload.begin(), message.payload.end()));
-
     break;
-
   default:
     LOG_WARNING("ChatClient", "Received unknown message type: {}", static_cast<int>(message.header.type));
   }

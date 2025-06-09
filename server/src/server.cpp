@@ -35,6 +35,8 @@ void Server::run() {
       continue;
     }
 
+    LOG_DEBUG(SERVER_COMPONENT, "Epoll returned {} events", num_events);
+
     for (int i = 0; i < num_events; ++i) {
       const auto &event = epoll_manager_.get_events()[i];
       if (event.data.fd == listener_->get_fd()) {
@@ -177,7 +179,7 @@ void Server::process_message(ClientSession &session, const common::Message &mess
           // Notify other clients about the new user
           common::Message user_joined_message;
           user_joined_message.header.type = common::MessageType::S2C_USER_JOINED;
-          user_joined_message.header.sender_id = common::SERVER_ID;
+          user_joined_message.header.sender_id = session.get_id();
           user_joined_message.header.receiver_id = common::BROADCAST_ID;
           user_joined_message.payload.assign(username.begin(), username.end());
           user_joined_message.header.payload_size = static_cast<uint32_t>(user_joined_message.payload.size());
