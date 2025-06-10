@@ -183,7 +183,7 @@ SocketResult PosixSocket::send_data(const std::vector<char> &data) {
   if (!is_valid())
     return {SocketStatus::ERROR, 0};
 
-  ssize_t bytes_sent = send(socket_fd_, data.data(), data.size(), 0);
+  ssize_t bytes_sent = send(socket_fd_, data.data(), data.size(), MSG_NOSIGNAL);
   if (bytes_sent < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return {SocketStatus::WOULD_BLOCK, 0};

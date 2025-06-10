@@ -17,6 +17,7 @@ public:
   ~Server() = default;
 
   void run();
+  void stop();
 
 private:
   void handle_new_connection();
@@ -25,8 +26,11 @@ private:
   
   void process_message(ClientSession &session, const common::Message &message);
   void process_join_message(ClientSession &session, const common::Message &message);
+  void process_user_joined_list(ClientSession &session);
   void process_broadcast_message(ClientSession &session, const common::Message &message);
   void process_private_message(ClientSession &session, const common::Message &message);
+
+  void shutdown();
 
   int port_;
   std::unique_ptr<common::IListeningSocket> listener_;

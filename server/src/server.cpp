@@ -51,6 +51,36 @@ void Server::run() {
       }
     }
   }
+
+  LOG_INFO(SERVER_COMPONENT, "Server stopped.");
+  shutdown();
+}
+
+void Server::stop() {
+  running_.store(false);
+  // The epoll_wait might be blocking indefinitely. We need to wake it up.
+  // A common trick is to make a dummy connection to the server itself.
+  auto dummy_socket = common::PosixSocket::create_connector("127.0.0.1", port_);
+  if (dummy_socket) {
+    dummy_socket->close_socket();
+  }
+}
+
+void Server::shutdown() {
+  LOG_INFO(SERVER_COMPONENT, "Shutting down server...");
+  listener_->close_socket();
+
+  // Notify all clients about the server shutdown
+  common::Message shutdown_message;
+  shutdown_message.header.type = common::MessageType::S2C_USER_LEFT;
+  shutdown_message.header.sender_id = common::SERVER_ID;
+  shutdown_message.header.receiver_id = common::BROADCAST_ID;
+  std::string shutdown_text = "Server is shutting down.";
+  shutdown_message.payload.assign(shutdown_text.begin(), shutdown_text.end());
+  shutdown_message.header.payload_size = static_cast<uint32_t>(shutdown_message.payload.size());
+  client_manager_.broadcast_message(shutdown_message, common::SERVER_ID);
+
+  LOG_INFO(SERVER_COMPONENT, "Server shutdown complete.");
 }
 
 /**
@@ -152,6 +182,10 @@ void Server::process_message(ClientSession &session, const common::Message &mess
     process_join_message(session, message);
     break;
   }
+  case common::MessageType::S2C_USER_JOINED_LIST: {
+    process_user_joined_list(session);
+    break;
+  }
   case common::MessageType::C2S_BROADCAST: {
     process_broadcast_message(session, message);
     break;
@@ -178,16 +212,17 @@ void Server::process_join_message(ClientSession &session, const common::Message 
       std::string error_message = "Username already taken";
       response.header.type = common::MessageType::S2C_JOIN_FAILURE;
       response.header.sender_id = common::SERVER_ID;
-      response.header.receiver_id = session.get_id();
+      response.header.receiver_id = common::INVALID_ID;
       response.payload.assign(error_message.begin(), error_message.end());
       response.header.payload_size = static_cast<uint32_t>(response.payload.size());
       session.get_socket()->send_data(common::serialize_message(response));
 
       // Force disconnect
-      handle_client_disconnection(session.get_fd());
+      // handle_client_disconnection(session.get_fd());
     } else {
       session.set_username(username);
       session.set_authenticated(true);
+      client_manager_.add_username(username);
 
       common::Message response;
       std::string welcome_message = "Welcome to the chat, " + username + "!";
@@ -198,30 +233,6 @@ void Server::process_join_message(ClientSession &session, const common::Message 
       response.header.payload_size = static_cast<uint32_t>(response.payload.size());
       session.get_socket()->send_data(common::serialize_message(response));
 
-      // Send the list of currently connected users to the new client
-      std::vector<std::string> user_list;
-      for (const auto &client : client_manager_.get_all_clients()) {
-        if (client->is_authenticated() && client->get_id() != session.get_id()) {
-          user_list.push_back(client->get_username() + ":" + std::to_string(client->get_id()));
-        }
-      }
-      if (!user_list.empty()) {
-        std::string user_list_str;
-        for (const auto &user : user_list) {
-          user_list_str += user + ",";
-        }
-        user_list_str.pop_back(); // Remove last comma
-        
-        common::Message user_list_message;
-        user_list_message.header.type = common::MessageType::S2C_USER_JOINED_LIST;
-        user_list_message.header.sender_id = common::SERVER_ID;
-        user_list_message.header.receiver_id = session.get_id();
-        user_list_message.payload.assign(user_list_str.begin(), user_list_str.end());
-        user_list_message.header.payload_size = static_cast<uint32_t>(user_list_message.payload.size());
-        
-        session.get_socket()->send_data(common::serialize_message(user_list_message));
-      }
-
       // Notify other clients about the new user
       common::Message user_joined_message;
       user_joined_message.header.type = common::MessageType::S2C_USER_JOINED;
@@ -231,6 +242,32 @@ void Server::process_join_message(ClientSession &session, const common::Message 
       user_joined_message.header.payload_size = static_cast<uint32_t>(user_joined_message.payload.size());
       client_manager_.broadcast_message(user_joined_message, session.get_id());
     }
+  }
+}
+
+void Server::process_user_joined_list(ClientSession &session) {
+  // Send the list of currently connected users to the new client
+  std::vector<std::string> user_list;
+  for (const auto &client : client_manager_.get_all_clients()) {
+    if (client->is_authenticated() && client->get_id() != session.get_id()) {
+      user_list.push_back(client->get_username() + ":" + std::to_string(client->get_id()));
+    }
+  }
+  if (!user_list.empty()) {
+    std::string user_list_str;
+    for (const auto &user : user_list) {
+      user_list_str += user + ",";
+    }
+    user_list_str.pop_back(); // Remove last comma
+
+    common::Message user_list_message;
+    user_list_message.header.type = common::MessageType::S2C_USER_JOINED_LIST;
+    user_list_message.header.sender_id = common::SERVER_ID;
+    user_list_message.header.receiver_id = session.get_id();
+    user_list_message.payload.assign(user_list_str.begin(), user_list_str.end());
+    user_list_message.header.payload_size = static_cast<uint32_t>(user_list_message.payload.size());
+
+    session.get_socket()->send_data(common::serialize_message(user_list_message));
   }
 }
 

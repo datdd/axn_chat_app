@@ -67,9 +67,9 @@ TEST(ProtocolTest, DeserializeMessageWithPayload) {
   msg.header.payload_size = msg.payload.length();
 
   std::vector<char> buffer = serialize_message(msg);
-  
+
   auto [deserialized_msg, size] = deserialize_message(buffer);
-  
+
   ASSERT_TRUE(deserialized_msg.has_value());
   EXPECT_EQ(deserialized_msg->header.type, MessageType::S2C_BROADCAST);
   EXPECT_EQ(deserialized_msg->header.sender_id, 12345);
@@ -87,9 +87,9 @@ TEST(ProtocolTest, DeserializeMessageWithoutPayload) {
   msg.header.payload_size = 0;
 
   std::vector<char> buffer = serialize_message(msg);
-  
+
   auto [deserialized_msg, size] = deserialize_message(buffer);
-  
+
   ASSERT_TRUE(deserialized_msg.has_value());
   EXPECT_EQ(deserialized_msg->header.type, MessageType::C2S_LEAVE);
   EXPECT_EQ(deserialized_msg->header.sender_id, 67890);
@@ -107,12 +107,12 @@ TEST(ProtocolTest, DeserializeIncompleteMessage) {
   msg.header.payload_size = msg.payload.length();
 
   std::vector<char> buffer = serialize_message(msg);
-  
+
   // Simulate an incomplete message by truncating the buffer
   buffer.resize(buffer.size() - 1);
-  
+
   auto [deserialized_msg, size] = deserialize_message(buffer);
-  
+
   EXPECT_FALSE(deserialized_msg.has_value());
   EXPECT_EQ(size, 0);
 }
@@ -126,12 +126,12 @@ TEST(ProtocolTest, DeserializeBufferWithExtraData) {
   msg.header.payload_size = msg.payload.length();
 
   std::vector<char> buffer = serialize_message(msg);
-  
+
   // Add extra data to the buffer
   buffer.push_back('X');
-  
+
   auto [deserialized_msg, size] = deserialize_message(buffer);
-  
+
   ASSERT_TRUE(deserialized_msg.has_value());
   EXPECT_EQ(deserialized_msg->header.type, MessageType::S2C_BROADCAST);
   EXPECT_EQ(deserialized_msg->header.sender_id, 12345);
@@ -141,20 +141,17 @@ TEST(ProtocolTest, DeserializeBufferWithExtraData) {
 }
 
 TEST(ProtocolTest, SerializeAndDeserializeMultipleMessages) {
-  std::vector<Message> messages = {
-      {MessageHeader{MessageType::C2S_JOIN, 12345, SERVER_ID, 5}, "User1"},
-      {MessageHeader{MessageType::C2S_LEAVE, 67890, SERVER_ID, 0}, ""},
-      {MessageHeader{MessageType::S2C_BROADCAST, 54321, SERVER_ID, 5}, "Hello"}
-  };
+  std::vector<Message> messages = {Message(MessageType::C2S_JOIN, 12345, SERVER_ID, 5, "User1"),
+                                   Message(MessageType::C2S_LEAVE, 67890, SERVER_ID, 0, ""),
+                                   Message(MessageType::S2C_BROADCAST, 54321, SERVER_ID, 5, "Hello")};
   std::vector<char> buffer;
-  for (const auto& msg : messages) {
+  for (const auto &msg : messages) {
     auto serialized = serialize_message(msg);
     buffer.insert(buffer.end(), serialized.begin(), serialized.end());
   }
   size_t offset = 0;
-  for (const auto& expected_msg : messages) {
-    auto [deserialized_msg, size] = deserialize_message(
-        std::vector<char>(buffer.begin() + offset, buffer.end()));
+  for (const auto &expected_msg : messages) {
+    auto [deserialized_msg, size] = deserialize_message(std::vector<char>(buffer.begin() + offset, buffer.end()));
     ASSERT_TRUE(deserialized_msg.has_value());
     EXPECT_EQ(deserialized_msg->header.type, expected_msg.header.type);
     EXPECT_EQ(deserialized_msg->header.sender_id, expected_msg.header.sender_id);

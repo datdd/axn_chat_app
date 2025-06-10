@@ -25,6 +25,8 @@ public:
   ClientSession *get_client_by_id(uint32_t id);
   ClientSession *get_client_by_fd(int fd);
   std::vector<ClientSession *> get_all_clients() const;
+
+  bool add_username(const std::string &username) { return usernames_.insert(username).second; }
   bool is_username_taken(const std::string &username) const;
 
   void broadcast_message(const common::Message &message, uint32_t exclude_sender_id);

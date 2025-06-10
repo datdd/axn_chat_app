@@ -29,6 +29,7 @@ enum class MessageType : uint8_t {
   S2C_USER_JOINED = 0x14,
   S2C_USER_LEFT = 0x15,
   S2C_USER_JOINED_LIST = 0x16,
+  S2C_SERVER_SHUTDOWN = 0x17,
 
   S2C_ERROR = 0xFF
 };
@@ -39,6 +40,11 @@ struct MessageHeader {
   uint32_t sender_id;
   uint32_t receiver_id;
   uint32_t payload_size;
+
+  MessageHeader() : type(MessageType::S2C_ERROR), sender_id(INVALID_ID), receiver_id(INVALID_ID), payload_size(0) {}
+
+  MessageHeader(MessageType t, uint32_t sender, uint32_t receiver, uint32_t size)
+      : type(t), sender_id(sender), receiver_id(receiver), payload_size(size) {}
 };
 
 // The fixed size of the header on the wire.
@@ -50,12 +56,39 @@ struct Message {
   MessageHeader header;
   std::string payload;
 
-  Message() = default;
+  /**
+   * @brief Default constructor for Message.
+   * Initializes the header to an error type and sets payload to an empty string.
+   */
+  Message() : header(MessageType::S2C_ERROR, INVALID_ID, INVALID_ID, 0), payload("") {}
+
+  /**
+   * @brief Constructs a Message with the specified type, sender, receiver, and payload.
+   * @param type The type of the message.
+   * @param sender The ID of the sender.
+   * @param receiver The ID of the receiver.
+   * @param payload_size The size of the payload.
+   * @param payload The payload data as a string.
+   */
+  Message(MessageType type, uint32_t sender, uint32_t receiver, uint32_t payload_size, const std::string &payload)
+      : header(type, sender, receiver, payload_size), payload(payload) {}
+  
+  /**
+   * @brief Constructs a Message with the specified type, sender, receiver, and payload.
+   * This constructor automatically calculates the payload size from the string.
+   * @param type The type of the message.
+   * @param sender The ID of the sender.
+   * @param receiver The ID of the receiver.
+   * @param payload The payload data as a string.
+   */
+  Message(MessageType type, uint32_t sender, uint32_t receiver, const std::string &payload)
+      : header(type, sender, receiver, static_cast<uint32_t>(payload.size())), payload(payload) {}
+  
 };
 
 /**
  * @brief Serializes a high-level Message struct into a network-ready byte buffer.
- * 
+ *
  * Handles endianness by converting multi-byte integers to network byte order
  * (using htonl for 32-bit integers).
  * @param msg The Message to serialize.

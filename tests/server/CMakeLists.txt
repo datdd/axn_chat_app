@@ -1,13 +1,14 @@
 add_executable(
     server_tests
-    client_manager_test.cc
-    server_integration_test.cc
+    client_manager_test.cpp
+    server_integration_test.cpp
 )
 
 target_link_libraries(
     server_tests
     PRIVATE
     GTest::gtest_main
+    GTest::gmock_main
     server_lib
 )
 
