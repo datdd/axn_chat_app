@@ -16,22 +16,22 @@ namespace client {
 class ServerConnection {
 public:
   ServerConnection();
-  ~ServerConnection();
+  virtual ~ServerConnection();
 
   ServerConnection(const ServerConnection &) = delete;
   ServerConnection &operator=(const ServerConnection &) = delete;
 
-  bool connect(const std::string &host, int port);
-  void disconnect();
-  void send_message(const common::Message &message);
-  void start_receiving(std::function<void(const common::Message &)> message_handler);
-  bool is_connected() const { return connected_; }
+  virtual bool connect(const std::string &host, int port);
+  virtual void disconnect();
+  virtual void send_message(const common::Message &msg);
+  virtual void start_receiving(const std::function<void(const common::Message &)> &on_message);
+  virtual bool is_connected() const;
 
 private:
-  void receive_loop(std::function<void(const common::Message &)> message_handler);
+  void receiver_loop(const std::function<void(const common::Message &)> &on_message);
 
   std::unique_ptr<common::IStreamSocket> socket_;
-  std::thread receive_thread_;
+  std::thread receiver_thread_;
   std::atomic<bool> connected_{false};
   std::vector<char> receive_buffer_;
 };

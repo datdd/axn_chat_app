@@ -4,88 +4,144 @@
 namespace chat_app {
 namespace client {
 
+/**
+ * @brief Constructor for ServerConnection.
+ */
 ServerConnection::ServerConnection() = default;
+
+/**
+ * @brief Destructor for ServerConnection.
+ */
 ServerConnection::~ServerConnection() { disconnect(); }
 
+/**
+ * @brief Connects to the server at the specified host and port.
+ *
+ * @param host The hostname or IP address of the server.
+ * @param port The port number on which the server is listening.
+ * @return true if the connection was successful, false otherwise.
+ */
 bool ServerConnection::connect(const std::string &host, int port) {
+  LOG_INFO("ServerConnection", "Attempting to connect to server at {}:{}", host, port);
   socket_ = common::PosixSocket::create_connector(host, port);
+
   if (!socket_ || !socket_->is_valid()) {
     LOG_ERROR("ServerConnection", "Failed to connect to server at {}:{}", host, port);
     return false;
   }
-  connected_ = true;
 
-  LOG_INFO("ServerConnection", "Connected to server at {}:{}", host, port);
+  connected_ = true;
+  LOG_INFO("ServerConnection", "Successfully connected to server.");
   return true;
 }
 
+/**
+ * @brief Disconnects from the server and cleans up resources.
+ */
 void ServerConnection::disconnect() {
+  // Set the atomic flag to false. This will signal the receiver_loop to terminate.
   connected_ = false;
+
+  // Close the socket. This will cause any blocking `receive_data` call in the
+  // receiver thread to immediately unblock and return an error or 0.
   if (socket_) {
     socket_->close_socket();
   }
-  if (receive_thread_.joinable()) {
-    receive_thread_.join();
+
+  // If the receiver thread is running, we must wait for it to finish execution.
+  if (receiver_thread_.joinable()) {
+    receiver_thread_.join();
   }
 }
 
-void ServerConnection::send_message(const common::Message &message) {
-  if (!connected_) {
-    LOG_ERROR("ServerConnection", "Cannot send message, not connected to server.");
+/**
+ * @brief Sends a message to the server.
+ *
+ * This function serializes the provided message and sends it over the established
+ * socket connection. If the connection is not active, it logs a warning and does not
+ * attempt to send the message.
+ *
+ * @param msg The message to be sent.
+ */
+void ServerConnection::send_message(const common::Message &msg) {
+  if (!is_connected()) {
+    LOG_WARNING("ServerConnection", "Not connected. Cannot send message.");
     return;
   }
 
-  auto serialized_message = common::serialize_message(message);
-  auto result = socket_->send_data(serialized_message);
+  auto serialized_msg = common::serialize_message(msg);
+  auto result = socket_->send_data(serialized_msg);
 
   if (result.status != common::SocketStatus::OK) {
-    LOG_ERROR("ServerConnection", "Failed to send message: {}. Disconnecting.", result.status);
+    LOG_ERROR("ServerConnection", "Failed to send message. Disconnecting.");
     disconnect();
   }
 }
 
-void ServerConnection::start_receiving(std::function<void(const common::Message &)> message_handler) {
-  if (!connected_) {
-    LOG_ERROR("ServerConnection", "Cannot start receiving messages, not connected to server.");
-    return;
-  }
-
-  receive_thread_ = std::thread(&ServerConnection::receive_loop, this, message_handler);
+/**
+ * @brief Starts the receiver thread that listens for incoming messages from the server.
+ *
+ * This function spawns a new thread that runs the `receiver_loop` method, which
+ * continuously reads data from the socket and processes complete messages using
+ * the provided callback function `on_message`.
+ *
+ * @param on_message A callback function that will be called with each deserialized message.
+ */
+void ServerConnection::start_receiving(const std::function<void(const common::Message &)> &on_message) {
+  receiver_thread_ = std::thread(&ServerConnection::receiver_loop, this, on_message);
 }
 
-void ServerConnection::receive_loop(std::function<void(const common::Message &)> message_handler) {
-  std::vector<char> buffer(4096);
+/**
+ * @brief Checks if the connection to the server is currently active.
+ *
+ * @return true if connected, false otherwise.
+ */
+bool ServerConnection::is_connected() const { return connected_; }
+
+/**
+ * @brief The receiver loop runs in a separate thread and continuously reads data
+ * from the socket. It deserializes messages and calls the provided callback
+ * function `on_message` for each complete message received.
+ *
+ * @param on_message A callback function that will be called with each
+ *                  deserialized message.
+ */
+void ServerConnection::receiver_loop(const std::function<void(const common::Message &)> &on_message) {
+  LOG_INFO("ServerConnection", "Receiver thread started.");
+  std::vector<char> temp_buffer(4096);
 
   while (is_connected()) {
-    auto result = socket_->receive_data(buffer);
+    auto result = socket_->receive_data(temp_buffer);
 
     if (result.status == common::SocketStatus::OK) {
-      receive_buffer_.insert(receive_buffer_.end(), buffer.begin(), buffer.begin() + result.bytes_transferred);
+      receive_buffer_.insert(receive_buffer_.end(), temp_buffer.begin(),
+                             temp_buffer.begin() + result.bytes_transferred);
     } else if (result.status == common::SocketStatus::CLOSED || result.status == common::SocketStatus::ERROR) {
-      LOG_ERROR("ServerConnection", "Socket error or closed. Disconnecting.");
+      LOG_INFO("ServerConnection", "Connection closed by server or error occurred. Shutting down receiver thread.");
       connected_ = false;
       break;
     }
 
     while (true) {
-      auto [message, byte_consumed] = common::deserialize_message(receive_buffer_);
+      auto [msg_opt, bytes_consumed] = common::deserialize_message(receive_buffer_);
 
-      if (!message) {
-        break; // No complete message available
+      if (msg_opt) {
+        on_message(*msg_opt);
+        receive_buffer_.erase(receive_buffer_.begin(), receive_buffer_.begin() + bytes_consumed);
+      } else {
+        break;
       }
-      message_handler(*message);
-      // Remove the processed message from the buffer
-      receive_buffer_.erase(receive_buffer_.begin(), receive_buffer_.begin() + byte_consumed);
     }
   }
 
-  // Notify the main thread that the connection is closed
-  common::Message shutdown_message;
-  shutdown_message.header.type = common::MessageType::S2C_USER_LEFT;
-  shutdown_message.header.sender_id = common::SERVER_ID;
-  message_handler(shutdown_message);
+  // After the loop terminates, the connection is gone. Send one final, special
+  // notification to the ChatClient so it can terminate its user input loop.
+  common::Message shutdown_msg;
+  shutdown_msg.header.type = common::MessageType::S2C_USER_LEFT;
+  shutdown_msg.header.sender_id = common::SERVER_ID;
+  on_message(shutdown_msg);
 
-  LOG_INFO("ServerConnection", "Receive loop ended, connection closed.");
+  LOG_INFO("ServerConnection", "Receiver thread terminated.");
 }
 
 } // namespace client

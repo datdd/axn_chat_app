@@ -1,6 +1,7 @@
 add_executable(
     client_tests
-    client_integration_test.cc
+    chat_client_test.cpp
+    # client_integration_test.cpp
 )
 
 # Link against GTest and the 'client_lib'.
@@ -8,6 +9,7 @@ target_link_libraries(
     client_tests
     PRIVATE
     GTest::gtest_main
+    GTest::gmock_main
     client_lib
 )
 

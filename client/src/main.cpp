@@ -30,8 +30,13 @@ int main(int argc, char *argv[]) {
 
   LOG_INFO("Main", "Starting client for user '{}' connecting to {}:{}", username, host, port);
 
-  chat_app::client::ChatClient client(username);
-  client.run(host, port);
+  // Create a server connection
+  auto server_connection = std::make_unique<chat_app::client::ServerConnection>();
+  chat_app::client::ChatClient client(username, std::move(server_connection));
+  
+  if (client.connect_and_join(host, port)) {
+    client.run_user_input_handler();
+  }
 
   return 0;
 }

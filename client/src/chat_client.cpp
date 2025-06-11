@@ -8,27 +8,26 @@
 namespace chat_app {
 namespace client {
 
-ChatClient::ChatClient(const std::string &username) : username_(std::move(username)) {}
+ChatClient::ChatClient(const std::string &username, std::unique_ptr<ServerConnection> server_connection)
+    : username_(username), server_connection_(std::move(server_connection)), is_running_(false), user_id_(0) {}
 
-void ChatClient::run(const std::string &server_address, int server_port) {
-  if (!server_connection_.connect(server_address, server_port)) {
-    is_running_ = false;
-    return;
+bool ChatClient::connect_and_join(const std::string &server_address, int server_port) {
+  if (!server_connection_->connect(server_address, server_port)) {
+    LOG_ERROR(CHAT_CLIENT_COMPONENT, "Failed to connect to server at {}:{}", server_address, server_port);
+    return false;
   }
-  is_running_ = true;
 
-  // Send JOIN message request
+  // Send join request to the server
   send_join_request();
-  // Start receiver thread
-  server_connection_.start_receiving([this](const common::Message &message) { this->message_handler(message); });
-  // Start processing user input in the main thread
-  user_input_handler();
-  // Cleanup
-  server_connection_.disconnect();
-  LOG_INFO("ChatClient", "Client has been shut down.");
+
+  // Start receiving messages from the server
+  server_connection_->start_receiving([this](const common::Message &message) { this->on_message_received(message); });
+
+  is_running_ = true;
+  return true;
 }
 
-void ChatClient::user_input_handler() {
+void ChatClient::run_user_input_handler() {
   std::string input;
 
   while (is_running_) {
@@ -41,52 +40,44 @@ void ChatClient::user_input_handler() {
 
     if (!input.empty()) {
       common::Message message;
+
       if (input[0] == '@') { // Private message
         size_t space_pos = input.find(' ');
         if (space_pos == std::string::npos) {
-          LOG_ERROR("ChatClient", "Invalid private message format. Use @username message.");
+          LOG_ERROR(CHAT_CLIENT_COMPONENT, "Invalid private message format. Use @username message.");
           continue;
         }
-        std::string recipient = input.substr(1, space_pos - 1);
-        std::string payload = input.substr(space_pos + 1);
+        std::string receiver = input.substr(1, space_pos - 1);
+        std::string msg_str = input.substr(space_pos + 1);
 
-        auto user_id = get_user_id_by_name(recipient);
+        auto user_id = get_user_id_by_name(receiver);
         if (!user_id) {
-          LOG_ERROR("ChatClient", "User '{}' not found.", recipient);
+          LOG_ERROR(CHAT_CLIENT_COMPONENT, "User '{}' not found.", receiver);
           continue;
         }
 
-        message.header.type = common::MessageType::C2S_PRIVATE;
-        message.header.receiver_id = user_id.value();
-        message.payload.assign(payload.begin(), payload.end());
+        message = common::Message(common::MessageType::C2S_PRIVATE, user_id_, user_id.value(), msg_str);
       } else { // Broadcast message
-        message.header.type = common::MessageType::C2S_BROADCAST;
-        message.header.receiver_id = common::BROADCAST_ID;
-        message.payload.assign(input.begin(), input.end());
+        message = common::Message(common::MessageType::C2S_BROADCAST, user_id_, common::BROADCAST_ID, input);
       }
 
-      message.header.sender_id = user_id_;
-      message.header.payload_size = static_cast<uint32_t>(message.payload.size());
-
-      server_connection_.send_message(message);
+      server_connection_->send_message(message);
     }
   }
+
+  server_connection_->disconnect();
+  LOG_INFO(CHAT_CLIENT_COMPONENT, "User input loop terminated. Client is shutting down.");
 }
 
 void ChatClient::send_join_request() {
-  common::Message join_message;
-  join_message.header.type = common::MessageType::C2S_JOIN;
-  join_message.header.sender_id = common::INVALID_ID;
-  join_message.header.receiver_id = common::SERVER_ID;
-  join_message.payload.assign(username_.begin(), username_.end());
-  join_message.header.payload_size = static_cast<uint32_t>(join_message.payload.size());
-  server_connection_.send_message(join_message);
+  common::Message join_message(common::MessageType::C2S_JOIN, common::INVALID_ID, common::SERVER_ID, username_);
+  server_connection_->send_message(join_message);
 }
 
-void ChatClient::message_handler(const common::Message &message) {
+void ChatClient::on_message_received(const common::Message &message) {
   switch (message.header.type) {
   case common::MessageType::S2C_JOIN_SUCCESS: {
-    process_join_message(message);
+    process_join_success(message);
     break;
   }
   case common::MessageType::S2C_JOIN_FAILURE: {
@@ -111,14 +102,15 @@ void ChatClient::message_handler(const common::Message &message) {
     break;
   }
   case common::MessageType::S2C_ERROR:
-    LOG_ERROR("ChatClient", "Error from server: {}", std::string(message.payload.begin(), message.payload.end()));
+    LOG_ERROR(CHAT_CLIENT_COMPONENT, "Error from server: {}",
+              std::string(message.payload.begin(), message.payload.end()));
     break;
   default:
-    LOG_WARNING("ChatClient", "Received unknown message type: {}", static_cast<int>(message.header.type));
+    LOG_WARNING(CHAT_CLIENT_COMPONENT, "Received unknown message type: {}", static_cast<int>(message.header.type));
   }
 }
 
-void ChatClient::process_join_message(const common::Message &message) {
+void ChatClient::process_join_success(const common::Message &message) {
   user_id_ = message.header.receiver_id;
   std::string welcome_msg(message.payload.begin(), message.payload.end());
   user_map_[user_id_] = username_;
@@ -165,9 +157,9 @@ void ChatClient::process_chat_message(const common::Message &message) {
 void ChatClient::process_user_joined_list(const common::Message &message) {
   std::cout << "[Server]: Current users in the chat:" << std::endl;
   std::lock_guard<std::mutex> lock(count_mutex_);
-  
+
   // Clear previous user map
-  user_map_.clear();
+  // user_map_.clear();
 
   // Deserialize user list
   size_t pos = 0;
