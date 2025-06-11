@@ -14,11 +14,18 @@ namespace common {
 
 enum class SocketStatus { OK, WOULD_BLOCK, CLOSED, ERROR };
 
+/**
+ * @brief Represents the result of a socket operation.
+ * Contains the status of the operation and the number of bytes transferred.
+ */
 struct SocketResult {
   SocketStatus status;
   std::size_t bytes_transferred;
 };
 
+/**
+ * @brief Overloaded operator<< for SocketStatus.
+ */
 inline std::ostream &operator<<(std::ostream &os, const SocketStatus &status) {
   switch (status) {
   case SocketStatus::OK:
@@ -42,6 +49,9 @@ inline std::ostream &operator<<(std::ostream &os, const SocketStatus &status) {
 
 class IStreamSocket; // Forward declaration
 
+/**
+ * @brief Interface for a listening socket that can accept incoming connections.
+ */
 class IListeningSocket {
 public:
   virtual ~IListeningSocket() = default;
@@ -55,6 +65,9 @@ public:
   virtual void set_non_blocking(bool non_blocking) = 0;
 };
 
+/**
+ * @brief Interface for a stream socket that can send and receive data.
+ */
 class IStreamSocket {
 public:
   virtual ~IStreamSocket() = default;
@@ -67,6 +80,9 @@ public:
   virtual void set_non_blocking(bool non_blocking) = 0;
 };
 
+/**
+ * @brief Represents a POSIX socket that implements both IStreamSocket and IListeningSocket interfaces.
+ */
 class PosixSocket : public IStreamSocket, public IListeningSocket {
 public:
   static std::unique_ptr<IListeningSocket> create_listener();

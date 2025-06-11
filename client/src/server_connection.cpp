@@ -22,16 +22,16 @@ ServerConnection::~ServerConnection() { disconnect(); }
  * @return true if the connection was successful, false otherwise.
  */
 bool ServerConnection::connect(const std::string &host, int port) {
-  LOG_INFO("ServerConnection", "Attempting to connect to server at {}:{}", host, port);
+  LOG_INFO(SERVER_CONNECTION_COMPONENT, "Attempting to connect to server at {}:{}", host, port);
   socket_ = common::PosixSocket::create_connector(host, port);
 
   if (!socket_ || !socket_->is_valid()) {
-    LOG_ERROR("ServerConnection", "Failed to connect to server at {}:{}", host, port);
+    LOG_ERROR(SERVER_CONNECTION_COMPONENT, "Failed to connect to server at {}:{}", host, port);
     return false;
   }
 
   connected_ = true;
-  LOG_INFO("ServerConnection", "Successfully connected to server.");
+  LOG_INFO(SERVER_CONNECTION_COMPONENT, "Successfully connected to server.");
   return true;
 }
 
@@ -50,6 +50,7 @@ void ServerConnection::disconnect() {
 
   // If the receiver thread is running, we must wait for it to finish execution.
   if (receiver_thread_.joinable()) {
+    LOG_DEBUG(SERVER_CONNECTION_COMPONENT, "Waiting for receiver thread to finish...");
     receiver_thread_.join();
   }
 }
@@ -65,7 +66,7 @@ void ServerConnection::disconnect() {
  */
 void ServerConnection::send_message(const common::Message &msg) {
   if (!is_connected()) {
-    LOG_WARNING("ServerConnection", "Not connected. Cannot send message.");
+    LOG_WARNING(SERVER_CONNECTION_COMPONENT, "Not connected. Cannot send message.");
     return;
   }
 
@@ -73,7 +74,7 @@ void ServerConnection::send_message(const common::Message &msg) {
   auto result = socket_->send_data(serialized_msg);
 
   if (result.status != common::SocketStatus::OK) {
-    LOG_ERROR("ServerConnection", "Failed to send message. Disconnecting.");
+    LOG_ERROR(SERVER_CONNECTION_COMPONENT, "Failed to send message. Disconnecting.");
     disconnect();
   }
 }
@@ -107,7 +108,7 @@ bool ServerConnection::is_connected() const { return connected_; }
  *                  deserialized message.
  */
 void ServerConnection::receiver_loop(const std::function<void(const common::Message &)> &on_message) {
-  LOG_INFO("ServerConnection", "Receiver thread started.");
+  LOG_DEBUG(SERVER_CONNECTION_COMPONENT, "Receiver thread started.");
   std::vector<char> temp_buffer(4096);
 
   while (is_connected()) {
@@ -117,7 +118,7 @@ void ServerConnection::receiver_loop(const std::function<void(const common::Mess
       receive_buffer_.insert(receive_buffer_.end(), temp_buffer.begin(),
                              temp_buffer.begin() + result.bytes_transferred);
     } else if (result.status == common::SocketStatus::CLOSED || result.status == common::SocketStatus::ERROR) {
-      LOG_INFO("ServerConnection", "Connection closed by server or error occurred. Shutting down receiver thread.");
+      LOG_INFO(SERVER_CONNECTION_COMPONENT, "Connection closed by server or error occurred. Shutting down receiver thread.");
       connected_ = false;
       break;
     }
@@ -141,7 +142,7 @@ void ServerConnection::receiver_loop(const std::function<void(const common::Mess
   shutdown_msg.header.sender_id = common::SERVER_ID;
   on_message(shutdown_msg);
 
-  LOG_INFO("ServerConnection", "Receiver thread terminated.");
+  LOG_INFO(SERVER_CONNECTION_COMPONENT, "Receiver thread terminated.");
 }
 
 } // namespace client

@@ -1,10 +1,16 @@
 #include "common/protocol.h"
-#include <arpa/inet.h> 
-#include <cstring> 
+#include <arpa/inet.h>
+#include <cstring>
 
 namespace chat_app {
 namespace common {
 
+/**
+ * @brief Serializes a Message object into a byte buffer.
+ *
+ * @param msg The Message object to serialize.
+ * @return A vector of characters containing the serialized message.
+ */
 std::vector<char> serialize_message(const Message &msg) {
   // Total size is the fixed header size plus the dynamic payload size.
   const size_t total_size = HEADER_SIZE + msg.header.payload_size;
@@ -39,6 +45,12 @@ std::vector<char> serialize_message(const Message &msg) {
   return buffer;
 }
 
+/**
+ * @brief Deserializes a byte buffer into a Message object.
+ *
+ * @param buffer The byte buffer containing the serialized message.
+ * @return A pair containing an optional Message object and the number of bytes consumed.
+ */
 std::pair<std::optional<Message>, size_t> deserialize_message(const std::vector<char> &buffer) {
   if (buffer.size() < HEADER_SIZE) {
     return {std::nullopt, 0}; // Not enough data for a header

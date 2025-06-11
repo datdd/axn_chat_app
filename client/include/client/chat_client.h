@@ -15,6 +15,10 @@ namespace client {
 
 #define CHAT_CLIENT_COMPONENT "ChatClient"
 
+/**
+ * @brief The ChatClient class handles the client-side logic for connecting to a chat server,
+ * joining the chat, sending messages, and receiving updates about other users.
+ */
 class ChatClient {
 public:
   explicit ChatClient(const std::string &username, std::unique_ptr<ServerConnection> server_connection);
@@ -28,6 +32,8 @@ public:
   const std::string &get_username() const { return username_; }
   const std::unordered_map<uint32_t, std::string> &get_user_map() const { return user_map_; }
   bool is_running() const { return is_running_; }
+
+  void request_list_of_users();
 
 private:
   void send_join_request();

@@ -11,6 +11,10 @@ namespace server {
 
 #define SERVER_COMPONENT "Server"
 
+/**
+ * @brief The Server class handles the chat server functionality.
+ * It listens for incoming connections, manages client sessions, and processes messages.
+ */
 class Server {
 public:
   explicit Server(int port);

@@ -57,21 +57,18 @@ void PosixSocket::close_socket() {
 
 /**
  * @brief Checks if the socket is valid.
- * A socket is considered valid if its file descriptor is greater than or equal to 0.
  * @return True if the socket is valid, false otherwise.
  */
 bool PosixSocket::is_valid() const { return socket_fd_ != -1; }
 
 /**
  * @brief Gets the file descriptor of the socket.
- * This method returns the file descriptor associated with the socket.
  * @return The file descriptor of the socket.
  */
 int PosixSocket::get_fd() const { return socket_fd_; }
 
 /**
  * @brief Sets the socket to non-blocking mode or blocking mode.
- * This method modifies the socket's file descriptor flags to set it as non-blocking or blocking.
  * @param non_blocking If true, sets the socket to non-blocking mode; otherwise, sets it to blocking mode.
  */
 void PosixSocket::set_non_blocking(bool non_blocking) {
@@ -95,19 +92,26 @@ void PosixSocket::set_non_blocking(bool non_blocking) {
   }
 }
 
+/**
+ * @brief Creates a new listening socket.
+ * @return A unique pointer to the created listening socket, or nullptr if the socket creation failed.
+ */
 std::unique_ptr<IListeningSocket> PosixSocket::create_listener() {
   auto sock = std::unique_ptr<PosixSocket>(new PosixSocket());
-
   if (!sock->is_valid()) {
     return nullptr;
   }
-
   return sock;
 }
 
+/**
+ * @brief Creates a new connector socket to connect to a specified IP address and port.
+ * @param ip_address The IP address to connect to.
+ * @param port The port number to connect to.
+ * @return A unique pointer to the created stream socket, or nullptr if the connection failed.
+ */
 std::unique_ptr<IStreamSocket> PosixSocket::create_connector(const std::string &ip_address, int port) {
   auto sock = std::unique_ptr<PosixSocket>(new PosixSocket());
-
   if (!sock->is_valid()) {
     return nullptr;
   }
@@ -129,6 +133,11 @@ std::unique_ptr<IStreamSocket> PosixSocket::create_connector(const std::string &
   return sock;
 }
 
+/**
+ * @brief Binds the socket to a specified port.
+ * @param port The port number to bind the socket to.
+ * @return True if the binding was successful, false otherwise.
+ */
 bool PosixSocket::bind_socket(int port) {
   if (!is_valid())
     return false;
@@ -152,6 +161,11 @@ bool PosixSocket::bind_socket(int port) {
   return true;
 }
 
+/**
+ * @brief Listens for incoming connections on the socket.
+ * @param backlog The maximum length of the queue of pending connections.
+ * @return True if the socket is successfully set to listen, false otherwise.
+ */
 bool PosixSocket::listen_socket(int backlog) {
   if (!is_valid())
     return false;
@@ -164,6 +178,10 @@ bool PosixSocket::listen_socket(int backlog) {
   return true;
 }
 
+/**
+ * @brief Accepts an incoming connection on the socket.
+ * @return A unique pointer to a new stream socket representing the accepted connection, or nullptr if the accept failed.
+ */
 std::unique_ptr<IStreamSocket> PosixSocket::accept_connection() {
   if (!is_valid())
     return nullptr;
@@ -179,6 +197,11 @@ std::unique_ptr<IStreamSocket> PosixSocket::accept_connection() {
   return std::make_unique<PosixSocket>(client_fd);
 }
 
+/**
+ * @brief Sends data over the socket.
+ * @param data The data to send as a vector of characters.
+ * @return A SocketResult indicating the status of the operation and the number of bytes sent.
+ */
 SocketResult PosixSocket::send_data(const std::vector<char> &data) {
   if (!is_valid())
     return {SocketStatus::ERROR, 0};
@@ -200,6 +223,10 @@ SocketResult PosixSocket::send_data(const std::vector<char> &data) {
   return {SocketStatus::OK, static_cast<std::size_t>(bytes_sent)};
 }
 
+/**
+ * @brief Receives data from the socket into a buffer.
+ * @param buffer The buffer to receive data into, which should be pre-allocated with sufficient capacity.
+ */
 SocketResult PosixSocket::receive_data(std::vector<char> &buffer) {
   if (!is_valid())
     return {SocketStatus::ERROR, 0};

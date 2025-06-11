@@ -3,7 +3,7 @@
 #include <iostream>
 
 int main(int argc, char *argv[]) {
-  chat_app::common::Logger::get_instance().set_level(chat_app::common::LogLevel::DEBUG);
+  chat_app::common::Logger::get_instance().set_level(chat_app::common::LogLevel::INFO);
 
   if (argc != 2) {
     std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;

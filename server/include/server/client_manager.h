@@ -14,6 +14,9 @@ namespace server {
 
 #define CLIENT_MANAGER_COMPONENT "ClientManager"
 
+/**
+ * @brief Manages client sessions in the chat server.
+ */
 class ClientManager {
 public:
   ClientManager();

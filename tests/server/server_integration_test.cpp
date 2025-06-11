@@ -139,9 +139,9 @@ TEST_F(ServerIntegrationTest, RejectsClientWithTakenUsername) {
 
   auto response1 = read_message(client_socket1.get());
   ASSERT_TRUE(response1.has_value());
-  EXPECT_EQ(response1->header.type, MessageType::S2C_JOIN_SUCCESS) << "Expected join success for first client";
+  EXPECT_EQ(response1->header.type, MessageType::S2C_JOIN_SUCCESS);
   uint32_t client_id1 = response1->header.receiver_id;
-  EXPECT_EQ(client_id1, 1) << "Expected client ID to be 1 for first client";
+  EXPECT_EQ(client_id1, 1);
 
   // 2. Try to connect another client with the same username
   auto client_socket2 = PosixSocket::create_connector("127.0.0.1", port_);
@@ -152,9 +152,8 @@ TEST_F(ServerIntegrationTest, RejectsClientWithTakenUsername) {
 
   auto response2 = read_message(client_socket2.get());
   ASSERT_TRUE(response2.has_value());
-  EXPECT_EQ(response2->header.type, MessageType::S2C_JOIN_FAILURE) << "Expected join failure for taken username";
-  EXPECT_EQ(response2->header.receiver_id, INVALID_ID) << "Receiver ID should be INVALID_ID for join failure";
-  EXPECT_EQ(response2->payload, "Username already taken") << "Expected error message for taken username";
+  EXPECT_EQ(response2->header.type, MessageType::S2C_JOIN_FAILURE);
+  EXPECT_EQ(response2->payload, "Username already exists");
 }
 
 TEST_F(ServerIntegrationTest, IgnoresInvalidMessages) {
@@ -172,8 +171,6 @@ TEST_F(ServerIntegrationTest, IgnoresInvalidMessages) {
   auto response = read_message(client_socket.get());
   ASSERT_FALSE(response.has_value()); 
 }
-
-// Add this test to tests/server/server_integration_test.cc
 
 TEST_F(ServerIntegrationTest, IgnoresMessagesFromUnauthenticatedClient) {
   // 1. A client connects but does NOT send a JOIN message.

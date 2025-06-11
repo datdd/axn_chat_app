@@ -13,6 +13,10 @@ namespace common {
 
 enum class LogLevel { DEBUG, INFO, WARNING, ERROR, CRITICAL };
 
+/**
+ * @brief Logger class for logging messages with different severity levels.
+ * It supports thread-safe logging and allows setting the log level.
+ */
 class Logger {
 public:
   static Logger &get_instance() {

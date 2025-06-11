@@ -8,6 +8,9 @@ namespace server {
 
 Server::Server(int port) : port_(port), epoll_manager_(1024) {}
 
+/**
+ * @brief Runs the server, listening for incoming connections and handling client messages.
+ */
 void Server::run() {
   listener_ = common::PosixSocket::create_listener();
   if (!listener_) {
@@ -21,7 +24,6 @@ void Server::run() {
   }
 
   listener_->set_non_blocking(true);
-  // Register the listener socket with epoll
   // Use EPOLLET for edge-triggered mode
   epoll_manager_.add_fd(listener_->get_fd(), EPOLLIN | EPOLLET);
 
@@ -34,7 +36,6 @@ void Server::run() {
       LOG_ERROR(SERVER_COMPONENT, "Epoll wait failed: {}", std::strerror(errno));
       continue;
     }
-
     LOG_DEBUG(SERVER_COMPONENT, "Epoll returned {} events", num_events);
 
     for (int i = 0; i < num_events; ++i) {
@@ -56,7 +57,11 @@ void Server::run() {
   shutdown();
 }
 
+/**
+ * @brief Stops the server gracefully.
+ */
 void Server::stop() {
+  // Set the running flag to false to stop the server loop
   running_.store(false);
   // The epoll_wait might be blocking indefinitely. We need to wake it up.
   // A common trick is to make a dummy connection to the server itself.
@@ -66,19 +71,18 @@ void Server::stop() {
   }
 }
 
+/**
+ * @brief Shuts down the server.
+ * Closes the listener socket and notifies all clients about the shutdown.
+ */
 void Server::shutdown() {
   LOG_INFO(SERVER_COMPONENT, "Shutting down server...");
   listener_->close_socket();
 
   // Notify all clients about the server shutdown
-  common::Message shutdown_message;
-  shutdown_message.header.type = common::MessageType::S2C_USER_LEFT;
-  shutdown_message.header.sender_id = common::SERVER_ID;
-  shutdown_message.header.receiver_id = common::BROADCAST_ID;
-  std::string shutdown_text = "Server is shutting down.";
-  shutdown_message.payload.assign(shutdown_text.begin(), shutdown_text.end());
-  shutdown_message.header.payload_size = static_cast<uint32_t>(shutdown_message.payload.size());
-  client_manager_.broadcast_message(shutdown_message, common::SERVER_ID);
+  common::Message server_shutdown_message(common::MessageType::S2C_SERVER_SHUTDOWN, common::SERVER_ID,
+                                          common::BROADCAST_ID, "Server is shutting down.");
+  client_manager_.broadcast_message(server_shutdown_message, common::SERVER_ID);
 
   LOG_INFO(SERVER_COMPONENT, "Server shutdown complete.");
 }
@@ -155,18 +159,13 @@ void Server::handle_client_disconnection(int fd) {
   LOG_INFO(SERVER_COMPONENT, "Client disconnected: ID = {}, FD = {}", session->get_id(), fd);
 
   if (session->is_authenticated()) {
-    common::Message message;
-    message.header.type = common::MessageType::S2C_USER_LEFT;
-    message.header.sender_id = common::SERVER_ID;
-    message.header.receiver_id = common::BROADCAST_ID;
-    message.payload.assign(session->get_username().begin(), session->get_username().end());
-    message.header.payload_size = static_cast<uint32_t>(message.payload.size());
-
-    client_manager_.broadcast_message(message, session->get_id());
+    common::Message user_left_message(common::MessageType::S2C_USER_LEFT, session->get_id(), common::BROADCAST_ID,
+                                      session->get_username());
+    client_manager_.broadcast_message(user_left_message, session->get_id());
   }
 
-  client_manager_.remove_client(fd);
   epoll_manager_.remove_fd(fd);
+  client_manager_.remove_client(fd);
 }
 
 /**
@@ -182,7 +181,7 @@ void Server::process_message(ClientSession &session, const common::Message &mess
     process_join_message(session, message);
     break;
   }
-  case common::MessageType::S2C_USER_JOINED_LIST: {
+  case common::MessageType::C2S_USER_JOINED_LIST: {
     process_user_joined_list(session);
     break;
   }
@@ -203,19 +202,22 @@ void Server::process_message(ClientSession &session, const common::Message &mess
   }
 }
 
+/**
+ * @brief Processes a join message from a client.
+ *
+ * @param session The client session that sent the join message.
+ * @param message The join message containing the username.
+ */
 void Server::process_join_message(ClientSession &session, const common::Message &message) {
-  // Handle join message
   if (!session.is_authenticated()) {
     std::string username(message.payload.begin(), message.payload.end());
     if (client_manager_.is_username_taken(username)) {
-      common::Message response;
-      std::string error_message = "Username already taken";
-      response.header.type = common::MessageType::S2C_JOIN_FAILURE;
-      response.header.sender_id = common::SERVER_ID;
-      response.header.receiver_id = common::INVALID_ID;
-      response.payload.assign(error_message.begin(), error_message.end());
-      response.header.payload_size = static_cast<uint32_t>(response.payload.size());
-      session.get_socket()->send_data(common::serialize_message(response));
+      common::Message user_already_exists_message(common::MessageType::S2C_JOIN_FAILURE, common::SERVER_ID,
+                                                  session.get_id(), "Username already exists");
+      session.get_socket()->send_data(common::serialize_message(user_already_exists_message));
+
+      LOG_WARNING(SERVER_COMPONENT, "Client with FD {} tried to join with an existing username: {}", session.get_fd(),
+                  username);
 
       // Force disconnect
       // handle_client_disconnection(session.get_fd());
@@ -224,35 +226,35 @@ void Server::process_join_message(ClientSession &session, const common::Message 
       session.set_authenticated(true);
       client_manager_.add_username(username);
 
-      common::Message response;
-      std::string welcome_message = "Welcome to the chat, " + username + "!";
-      response.header.type = common::MessageType::S2C_JOIN_SUCCESS;
-      response.header.sender_id = common::SERVER_ID;
-      response.header.receiver_id = session.get_id();
-      response.payload.assign(welcome_message.begin(), welcome_message.end());
-      response.header.payload_size = static_cast<uint32_t>(response.payload.size());
-      session.get_socket()->send_data(common::serialize_message(response));
+      // Send a success message back to the client
+      common::Message user_joined_message(common::MessageType::S2C_JOIN_SUCCESS, common::SERVER_ID, session.get_id(),
+                                          "Welcome to the chat, " + username + "!");
+      session.get_socket()->send_data(common::serialize_message(user_joined_message));
 
-      // Notify other clients about the new user
-      common::Message user_joined_message;
-      user_joined_message.header.type = common::MessageType::S2C_USER_JOINED;
-      user_joined_message.header.sender_id = session.get_id();
-      user_joined_message.header.receiver_id = common::BROADCAST_ID;
-      user_joined_message.payload.assign(username.begin(), username.end());
-      user_joined_message.header.payload_size = static_cast<uint32_t>(user_joined_message.payload.size());
-      client_manager_.broadcast_message(user_joined_message, session.get_id());
+      // Broadcast the user joined message to all other clients
+      common::Message notify_user_joined_message(common::MessageType::S2C_USER_JOINED, session.get_id(),
+                                                 common::BROADCAST_ID, username);
+      client_manager_.broadcast_message(notify_user_joined_message, session.get_id());
+
+      LOG_INFO(SERVER_COMPONENT, "Client with FD {} joined with username: {}", session.get_fd(), username);
     }
   }
 }
 
+/**
+ * @brief Processes a request for the list of users currently connected to the server.
+ *
+ * @param session The client session that requested the user list.
+ */
 void Server::process_user_joined_list(ClientSession &session) {
-  // Send the list of currently connected users to the new client
   std::vector<std::string> user_list;
+
   for (const auto &client : client_manager_.get_all_clients()) {
     if (client->is_authenticated() && client->get_id() != session.get_id()) {
       user_list.push_back(client->get_username() + ":" + std::to_string(client->get_id()));
     }
   }
+
   if (!user_list.empty()) {
     std::string user_list_str;
     for (const auto &user : user_list) {
@@ -260,52 +262,42 @@ void Server::process_user_joined_list(ClientSession &session) {
     }
     user_list_str.pop_back(); // Remove last comma
 
-    common::Message user_list_message;
-    user_list_message.header.type = common::MessageType::S2C_USER_JOINED_LIST;
-    user_list_message.header.sender_id = common::SERVER_ID;
-    user_list_message.header.receiver_id = session.get_id();
-    user_list_message.payload.assign(user_list_str.begin(), user_list_str.end());
-    user_list_message.header.payload_size = static_cast<uint32_t>(user_list_message.payload.size());
-
+    common::Message user_list_message(common::MessageType::S2C_USER_JOINED_LIST, common::SERVER_ID, session.get_id(),
+                                      user_list_str);
     session.get_socket()->send_data(common::serialize_message(user_list_message));
   }
 }
 
+/**
+ * @brief Processes a broadcast message from a client.
+ *
+ * @param session The client session that sent the broadcast message.
+ * @param message The broadcast message containing the payload.
+ */
 void Server::process_broadcast_message(ClientSession &session, const common::Message &message) {
   if (session.is_authenticated()) {
-    common::Message broadcast_message = message;
-    broadcast_message.header.type = common::MessageType::S2C_BROADCAST;
-    broadcast_message.header.sender_id = session.get_id();
-    broadcast_message.header.receiver_id = common::BROADCAST_ID;
-    broadcast_message.payload = message.payload;
-    broadcast_message.header.payload_size = message.header.payload_size;
+    common::Message broadcast_message(common::MessageType::S2C_BROADCAST, session.get_id(), common::BROADCAST_ID,
+                                      message.payload);
     client_manager_.broadcast_message(broadcast_message, session.get_id());
   }
 }
 
+/**
+ * @brief Processes a private message from a client to another client.
+ *
+ * @param session The client session that sent the private message.
+ * @param message The private message containing the payload and receiver ID.
+ */
 void Server::process_private_message(ClientSession &session, const common::Message &message) {
-  if (session.is_authenticated()) {
-    common::Message private_message = message;
-    private_message.header.type = common::MessageType::S2C_PRIVATE;
-    private_message.header.sender_id = session.get_id();
-    private_message.header.receiver_id = message.header.receiver_id;
-    private_message.payload = message.payload;
-    private_message.header.payload_size = message.header.payload_size;
-
-    auto receiver_session = client_manager_.get_client_by_id(message.header.receiver_id);
-    if (receiver_session) {
-      receiver_session->get_socket()->send_data(common::serialize_message(private_message));
-    } else {
-      // If the receiver is not connected, send an error message back to the sender
-      common::Message error_message;
-      error_message.header.type = common::MessageType::S2C_ERROR;
-      error_message.header.sender_id = common::SERVER_ID;
-      error_message.header.receiver_id = session.get_id();
-      std::string error_text = "User not found or not connected.";
-      error_message.payload.assign(error_text.begin(), error_text.end());
-      error_message.header.payload_size = static_cast<uint32_t>(error_text.size());
-      session.get_socket()->send_data(common::serialize_message(error_message));
-    }
+  auto receiver_session = client_manager_.get_client_by_id(message.header.receiver_id);
+  if (session.is_authenticated() && receiver_session) {
+    common::Message private_message(common::MessageType::S2C_PRIVATE, session.get_id(), message.header.receiver_id,
+                                    message.payload);
+    receiver_session->get_socket()->send_data(common::serialize_message(private_message));
+  } else if (!receiver_session) {
+    common::Message error_message(common::MessageType::S2C_ERROR, common::SERVER_ID, session.get_id(),
+                                  "Receiver not found or not connected.");
+    session.get_socket()->send_data(common::serialize_message(error_message));
   }
 }
 

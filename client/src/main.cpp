@@ -2,11 +2,23 @@
 #include "common/logger.h"
 #include <iostream>
 
+void show_help() {
+  std::cout << "Usage: chat_client <host_ip> <port> <username>\n"
+            << "  host_ip   - The IP address of the chat server.\n"
+            << "  port      - The listening port number of the chat server.\n"
+            << "  username  - Your username for the chat.\n";
+}
+
+void show_send_private_message_guide() {
+  std::cout << "To send a private message, type '@<username> <message>'\n"
+            << "Example: '@john Hello, how are you?'\n";
+}
+
 int main(int argc, char *argv[]) {
-  chat_app::common::Logger::get_instance().set_level(chat_app::common::LogLevel::DEBUG);
+  chat_app::common::Logger::get_instance().set_level(chat_app::common::LogLevel::INFO);
 
   if (argc != 4) {
-    std::cerr << "Usage: " << argv[0] << " <host_ip> <port> <username>" << std::endl;
+    show_help();
     return 1;
   }
 
@@ -35,6 +47,8 @@ int main(int argc, char *argv[]) {
   chat_app::client::ChatClient client(username, std::move(server_connection));
   
   if (client.connect_and_join(host, port)) {
+    show_send_private_message_guide();
+    client.request_list_of_users();
     client.run_user_input_handler();
   }
 

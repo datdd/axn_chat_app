@@ -14,12 +14,17 @@ constexpr uint32_t SERVER_ID = 0;
 constexpr uint32_t BROADCAST_ID = 0;
 constexpr uint32_t INVALID_ID = 0xFFFFFFFF;
 
+/**
+ * @brief Enum class representing the different types of messages
+ * that can be sent in the chat application protocol.
+ */
 enum class MessageType : uint8_t {
   // --- Client to Server ---
   C2S_JOIN = 0x01,
   C2S_BROADCAST = 0x02,
   C2S_PRIVATE = 0x03,
   C2S_LEAVE = 0x04,
+  C2S_USER_JOINED_LIST = 0x05,
 
   // --- Server to Client ---
   S2C_JOIN_SUCCESS = 0x10,
@@ -34,7 +39,9 @@ enum class MessageType : uint8_t {
   S2C_ERROR = 0xFF
 };
 
-// Represents the header of a message sent over the network.
+/**
+ * @brief Represents the header of a message in the chat application protocol.
+ */
 struct MessageHeader {
   MessageType type;
   uint32_t sender_id;
@@ -51,7 +58,10 @@ struct MessageHeader {
 // 1 (type) + 4 (sender) + 4 (recipient) + 4 (size) = 13 bytes.
 constexpr size_t HEADER_SIZE = sizeof(uint8_t) + sizeof(uint32_t) * 3;
 
-// High-level message representation for application logic.
+/**
+ * @brief Represents a high-level message in the chat application protocol.
+ * Contains a header and a payload.
+ */
 struct Message {
   MessageHeader header;
   std::string payload;

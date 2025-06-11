@@ -8,9 +8,22 @@
 namespace chat_app {
 namespace client {
 
+/**
+ * @brief Constructs a ChatClient with the given username and server connection.
+ *
+ * @param username The username for the chat client.
+ * @param server_connection A unique pointer to the ServerConnection instance.
+ */
 ChatClient::ChatClient(const std::string &username, std::unique_ptr<ServerConnection> server_connection)
     : username_(username), server_connection_(std::move(server_connection)), is_running_(false), user_id_(0) {}
 
+/**
+ * @brief Connects to the chat server and sends a join request.
+ *
+ * @param server_address The address of the chat server.
+ * @param server_port The port on which the chat server is listening.
+ * @return true if the connection and join request were successful, false otherwise.
+ */
 bool ChatClient::connect_and_join(const std::string &server_address, int server_port) {
   if (!server_connection_->connect(server_address, server_port)) {
     LOG_ERROR(CHAT_CLIENT_COMPONENT, "Failed to connect to server at {}:{}", server_address, server_port);
@@ -27,16 +40,20 @@ bool ChatClient::connect_and_join(const std::string &server_address, int server_
   return true;
 }
 
+/**
+ * @brief Runs the user input handler in a loop, allowing the user to send messages.
+ *
+ * This function reads user input from the console and sends messages to the server.
+ * It handles both broadcast messages and private messages.
+ */
 void ChatClient::run_user_input_handler() {
   std::string input;
 
   while (is_running_) {
+    // std::cout << get_username() << "> ";
     std::getline(std::cin, input);
 
-    if (input == "/exit") {
-      is_running_ = false;
-      break;
-    }
+    if (input == "/exit") break;
 
     if (!input.empty()) {
       common::Message message;
@@ -64,16 +81,25 @@ void ChatClient::run_user_input_handler() {
       server_connection_->send_message(message);
     }
   }
-
-  server_connection_->disconnect();
+  
   LOG_INFO(CHAT_CLIENT_COMPONENT, "User input loop terminated. Client is shutting down.");
+  server_connection_->disconnect();
+  is_running_ = false;
 }
 
+/**
+ * @brief Sends a join request to the server.
+ */
 void ChatClient::send_join_request() {
   common::Message join_message(common::MessageType::C2S_JOIN, common::INVALID_ID, common::SERVER_ID, username_);
   server_connection_->send_message(join_message);
 }
 
+/**
+ * @brief Handles incoming messages from the server and processes them based on their type.
+ *
+ * @param message The received message from the server.
+ */
 void ChatClient::on_message_received(const common::Message &message) {
   switch (message.header.type) {
   case common::MessageType::S2C_JOIN_SUCCESS: {
@@ -110,6 +136,19 @@ void ChatClient::on_message_received(const common::Message &message) {
   }
 }
 
+/**
+ * @brief Requests the list of users currently in the chat from the server.
+ */
+void ChatClient::request_list_of_users() {
+  common::Message request_message(common::MessageType::C2S_USER_JOINED_LIST, user_id_, common::SERVER_ID, "");
+  server_connection_->send_message(request_message);
+}
+
+/**
+ * @brief Processes a successful join response from the server.
+ *
+ * @param message The message containing the join success information.
+ */
 void ChatClient::process_join_success(const common::Message &message) {
   user_id_ = message.header.receiver_id;
   std::string welcome_msg(message.payload.begin(), message.payload.end());
@@ -118,6 +157,11 @@ void ChatClient::process_join_success(const common::Message &message) {
   std::cout << "[Server]: " << welcome_msg << " (Your ID: " << user_id_ << ")" << std::endl;
 }
 
+/**
+ * @brief Processes a join failure response from the server.
+ *
+ * @param message The message containing the join failure information.
+ */
 void ChatClient::process_join_failure(const common::Message &message) {
   std::string error_msg(message.payload.begin(), message.payload.end());
   is_running_ = false;
@@ -125,6 +169,11 @@ void ChatClient::process_join_failure(const common::Message &message) {
   std::cerr << "[Server Error]: " << error_msg << std::endl;
 }
 
+/**
+ * @brief Processes a user joining the chat.
+ *
+ * @param message The message containing the new user's information.
+ */
 void ChatClient::process_user_joined(const common::Message &message) {
   std::string new_user(message.payload.begin(), message.payload.end());
   std::lock_guard<std::mutex> lock(count_mutex_);
@@ -133,6 +182,11 @@ void ChatClient::process_user_joined(const common::Message &message) {
   std::cout << "[Server]: User '" << new_user << "' has joined the chat." << std::endl;
 }
 
+/**
+ * @brief Processes a user leaving the chat.
+ *
+ * @param message The message containing the information of the user who left.
+ */
 void ChatClient::process_user_left(const common::Message &message) {
   if (message.header.sender_id == common::SERVER_ID) {
     std::cout << "You have left the chat." << std::endl;
@@ -147,13 +201,21 @@ void ChatClient::process_user_left(const common::Message &message) {
   std::cout << "[Server]: User '" << left_user << "' has left the chat." << std::endl;
 }
 
+/**
+ * @brief Processes a chat message received from the server.
+ *
+ * @param message The message containing the chat content and sender information.
+ */
 void ChatClient::process_chat_message(const common::Message &message) {
   std::string sender_name = user_map_.count(message.header.sender_id) ? user_map_[message.header.sender_id] : "Unknown";
-  std::string payload(message.payload.begin(), message.payload.end());
-
-  std::cout << "[" << sender_name << "]: " << payload << std::endl;
+  std::cout << "@" << sender_name << "> " << message.payload << std::endl;
 }
 
+/**
+ * @brief Processes the list of users currently in the chat.
+ *
+ * @param message The message containing the list of users.
+ */
 void ChatClient::process_user_joined_list(const common::Message &message) {
   std::cout << "[Server]: Current users in the chat:" << std::endl;
   std::lock_guard<std::mutex> lock(count_mutex_);
@@ -182,6 +244,12 @@ void ChatClient::process_user_joined_list(const common::Message &message) {
   }
 }
 
+/**
+ * @brief Helper function to get the user ID by username.
+ *
+ * @param username The username to search for.
+ * @return An optional containing the user ID if found, or std::nullopt if not found.
+ */
 std::optional<uint32_t> ChatClient::get_user_id_by_name(const std::string &username) {
   std::lock_guard<std::mutex> lock(count_mutex_);
   for (const auto &pair : user_map_) {

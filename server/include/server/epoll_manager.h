@@ -9,6 +9,9 @@ namespace server {
 
 #define EPOLL_MANAGER_COMPONENT "EpollManager"
 
+/**
+ * @brief Manages epoll events.
+ */
 class EpollManager {
 public:
   EpollManager(int max_events = 10);

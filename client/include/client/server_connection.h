@@ -13,6 +13,12 @@
 namespace chat_app {
 namespace client {
 
+#define SERVER_CONNECTION_COMPONENT "ServerConnection"
+
+/**
+ * @brief The ServerConnection class manages the connection to the chat server.
+ * It handles connecting, disconnecting, sending messages, and receiving messages.
+ */
 class ServerConnection {
 public:
   ServerConnection();

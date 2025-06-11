@@ -11,6 +11,10 @@
 namespace chat_app {
 namespace server {
 
+  /**
+   * @brief Represents a client session in the chat server.
+   * Each session is associated with a unique ID and a socket for communication.
+   */
 class ClientSession {
 public:
   ClientSession(uint32_t id, std::unique_ptr<common::IStreamSocket> socket);
