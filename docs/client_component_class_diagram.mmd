@@ -1,0 +1,49 @@
+classDiagram
+    title Client Component Class Diagram
+    
+    class IListeningSocket {
+        <<interface>>
+        +accept_connection() : unique_ptr~IStreamSocket~
+    }
+
+    class IStreamSocket {
+        <<interface>>
+        +send_data() : SocketResult
+        +receive_data() : SocketResult
+    }
+
+    class PosixSocket {
+        -socket_fd_ : int
+        +static create_listener() : unique_ptr~IListeningSocket~
+        +static create_connector() : unique_ptr~IStreamSocket~
+    }
+
+    class Message {
+        +header : MessageHeader
+        +payload : vector~char~
+    }
+
+    class ChatClient {
+        -server_connection_ : unique_ptr~ServerConnection~
+        +connect_and_join(server_address, server_port) : bool
+        +run_user_input_handler(): void
+        +on_message_received(message) : void
+    }
+
+    class ServerConnection {
+        -socket_ : unique_ptr~IStreamSocket~
+        +connect(server_address, server_port) : bool
+        +disconnect() : void
+        +send_message(message) : SocketResult
+        +start_receiving(callback) : void
+    }
+
+
+    ChatClient "1" *-- "1" ServerConnection : has-a
+    ServerConnection "1" --> "1" IStreamSocket : owns
+
+    ServerConnection ..> Message : sends and receives
+    ChatClient ..> Message : processes mesages logically
+    
+    IListeningSocket <|-- PosixSocket : implements
+    IStreamSocket <|-- PosixSocket : implements
