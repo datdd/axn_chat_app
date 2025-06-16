@@ -220,7 +220,7 @@ void Server::process_join_message(ClientSession &session, const common::Message 
                   username);
 
       // Force disconnect
-      // handle_client_disconnection(session.get_fd());
+      handle_client_disconnection(session.get_fd());
     } else {
       session.set_username(username);
       session.set_authenticated(true);

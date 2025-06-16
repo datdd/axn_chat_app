@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant Client
+    participant Server
+    participant EpollManager
+    participant ClientManager
+    participant ClientSession
+
+    autonumber
+
+    %% --- Connection Phase ---
+    Client->>+Server: Establishes TCP Connection
+    activate Server
+    Server->>EpollManager: epoll_wait() returns event on listener FD
+    Server->>Server: handle_new_connection()
+    Server->>ClientManager: add_client(new_socket)
+    ClientManager->>ClientSession: new ClientSession(id, socket)
+    Server->>EpollManager: add_fd(new_client_fd, EPOLLIN)
+    deactivate Server
+
+    %% --- Join Message Phase ---
+    activate Server
+    Client->>+Server: Sends [C2S_JOIN] message (payload: "Alice")
+    Server->>EpollManager: epoll_wait() returns EPOLLIN on client FD
+    Server->>Server: handle_client_data()
+    Note right of Server: Reads data into ClientSession's buffer
+    Server->>Server: deserialize() -> C2S_JOIN Message
+    Server->>Server: process_message(session, message)
+
+    %% --- Username Check Phase ---
+    Note over Server: Check if username is taken
+    alt Username is not taken
+        Server->>ClientSession: set_username("Alice"), set_authenticated(true)
+        Server->>Client: Sends [S2C_JOIN_SUCCESS] (receiver_id: assigned_id, payload: "Welcome!")
+        Note over Server, ClientManager: Create and broadcast USER_JOINED notice
+        Server->>ClientManager: broadcast_message([S2C_USER_JOINED], username: "Alice")
+    else Username is taken
+        Server->>Client: Sends [S2C_JOIN_FAILURE] (payload: "Username taken")
+        Server->>Server: handle_disconnect(client_fd)
+    end
+    deactivate Server

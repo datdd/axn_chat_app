@@ -1,0 +1,70 @@
+classDiagram
+    title Server Component Class Diagram
+    
+    class IListeningSocket {
+        <<interface>>
+        +accept_connection() : unique_ptr~IStreamSocket~
+    }
+
+    class IStreamSocket {
+        <<interface>>
+        +send_data() : SocketResult
+        +receive_data() : SocketResult
+    }
+
+    class PosixSocket {
+        -socket_fd_ : int
+        +static create_listener() : unique_ptr~IListeningSocket~
+        +static create_connector() : unique_ptr~IStreamSocket~
+    }
+
+    class Message {
+        +header : MessageHeader
+        +payload : vector~char~
+    }
+
+    class Server {
+        -listener_ : unique_ptr~IListeningSocket~
+        -epoll_manager_ : EpollManager
+        -client_manager_ : ClientManager
+        +run()
+        +handle_new_connection()
+        +handle_client_data()
+        +process_message()
+    }
+
+    class EpollManager {
+        -epoll_fd_ : int
+        +add_fd(fd, events)
+        +wait(timeout) : int
+        +remove_fd(fd)
+    }
+
+    class ClientManager {
+        -sessions_by_fd_ : map~int, unique_ptr~ClientSession~~
+        +add_client(socket) : ClientSession*
+        +remove_client(fd)
+        +broadcast_message(msg, exclude_id)
+    }
+
+    class ClientSession {
+        -id_ : uint32_t
+        -socket_ : unique_ptr~IStreamSocket~
+        -username_ : string
+        -read_buffer_ : vector~char~
+    }
+
+    Server "1" *-- "1" EpollManager : has-a
+    Server "1" *-- "1" ClientManager : has-a
+
+    ClientManager "1" *-- "0..*" ClientSession : manages
+
+    Server "1" --> "1" IListeningSocket : owns
+    ClientSession "1" --> "1" IStreamSocket : owns
+
+    PosixSocket --|> IListeningSocket
+    PosixSocket --|> IStreamSocket
+
+    Server ..> ClientSession : handles events for
+    Server ..> Message : processes
+    ClientManager ..> Message : uses for broadcast
