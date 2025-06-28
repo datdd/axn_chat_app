@@ -109,18 +109,24 @@ bool ServerConnection::is_connected() const { return connected_; }
  */
 void ServerConnection::receiver_loop(const std::function<void(const common::Message &)> &on_message) {
   LOG_DEBUG(SERVER_CONNECTION_COMPONENT, "Receiver thread started.");
-  std::vector<char> temp_buffer(4096);
+  constexpr size_t initial_buffer_size = 4096;
+  receive_buffer_.reserve(initial_buffer_size);
 
   while (is_connected()) {
-    auto result = socket_->receive_data(temp_buffer);
+    size_t current_size = receive_buffer_.size();
+    receive_buffer_.resize(current_size + initial_buffer_size);
+
+    auto result = socket_->raw_receive(receive_buffer_.data() + current_size, initial_buffer_size);
 
     if (result.status == common::SocketStatus::OK) {
-      receive_buffer_.insert(receive_buffer_.end(), temp_buffer.begin(),
-                             temp_buffer.begin() + result.bytes_transferred);
-    } else if (result.status == common::SocketStatus::CLOSED || result.status == common::SocketStatus::ERROR) {
-      LOG_INFO(SERVER_CONNECTION_COMPONENT, "Connection closed by server or error occurred. Shutting down receiver thread.");
-      connected_ = false;
-      break;
+      receive_buffer_.resize(current_size + result.bytes_transferred);
+    } else {
+      receive_buffer_.resize(current_size);
+      if (result.status == common::SocketStatus::CLOSED || result.status == common::SocketStatus::ERROR) {
+        LOG_INFO(SERVER_CONNECTION_COMPONENT, "Connection closed or error. Shutting down receiver.");
+        connected_ = false;
+        break;
+      }
     }
 
     while (true) {

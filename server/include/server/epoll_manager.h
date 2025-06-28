@@ -14,7 +14,7 @@ namespace server {
  */
 class EpollManager {
 public:
-  EpollManager(int max_events = 10);
+  explicit EpollManager(int max_events = 10);
   ~EpollManager();
 
   bool add_fd(int fd, uint32_t events);

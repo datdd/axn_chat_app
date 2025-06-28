@@ -221,7 +221,7 @@ void ChatClient::process_user_joined_list(const common::Message &message) {
   std::lock_guard<std::mutex> lock(count_mutex_);
 
   // Clear previous user map
-  // user_map_.clear();
+  user_map_.clear();
 
   // Deserialize user list
   size_t pos = 0;

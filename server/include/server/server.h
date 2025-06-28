@@ -41,6 +41,7 @@ private:
   EpollManager epoll_manager_;
   ClientManager client_manager_;
   std::atomic<bool> running_{true};
+  int server_event_fd_{-1};
 };
 
 } // namespace server

@@ -2,15 +2,14 @@
 #include "common/logger.h"
 #include <arpa/inet.h>
 #include <cstring>
+#include <sys/eventfd.h>
+#include <unistd.h>
 
 namespace chat_app {
 namespace server {
 
 Server::Server(int port) : port_(port), epoll_manager_(1024) {}
 
-/**
- * @brief Runs the server, listening for incoming connections and handling client messages.
- */
 void Server::run() {
   listener_ = common::PosixSocket::create_listener();
   if (!listener_) {
@@ -24,8 +23,14 @@ void Server::run() {
   }
 
   listener_->set_non_blocking(true);
-  // Use EPOLLET for edge-triggered mode
   epoll_manager_.add_fd(listener_->get_fd(), EPOLLIN | EPOLLET);
+
+  server_event_fd_ = eventfd(0, EFD_NONBLOCK);
+  if (server_event_fd_ == -1) {
+    LOG_ERROR(SERVER_COMPONENT, "Failed to create eventfd: {}", std::strerror(errno));
+    return;
+  }
+  epoll_manager_.add_fd(server_event_fd_, EPOLLIN | EPOLLET);
 
   running_ = true;
   LOG_INFO(SERVER_COMPONENT, "Server started on port {}. Waiting for new connections ...", port_);
@@ -33,53 +38,38 @@ void Server::run() {
   while (running_) {
     int num_events = epoll_manager_.wait(-1);
     if (num_events < 0) {
+      if (errno == EINTR)
+        continue;
       LOG_ERROR(SERVER_COMPONENT, "Epoll wait failed: {}", std::strerror(errno));
-      continue;
+      break;
     }
-    LOG_DEBUG(SERVER_COMPONENT, "Epoll returned {} events", num_events);
 
     for (int i = 0; i < num_events; ++i) {
       const auto &event = epoll_manager_.get_events()[i];
       if (event.data.fd == listener_->get_fd()) {
         handle_new_connection();
+      } else if (event.data.fd == server_event_fd_) {
+        running_ = false;
       } else {
         if ((event.events & EPOLLHUP) || (event.events & EPOLLERR)) {
           handle_client_disconnection(event.data.fd);
         } else if (event.events & EPOLLIN) {
-          // Handle incoming messages from clients
           handle_client_message(event.data.fd);
         }
       }
     }
   }
 
-  LOG_INFO(SERVER_COMPONENT, "Server stopped.");
   shutdown();
 }
 
-/**
- * @brief Stops the server gracefully.
- */
-void Server::stop() {
-  // Set the running flag to false to stop the server loop
-  running_.store(false);
-  // The epoll_wait might be blocking indefinitely. We need to wake it up.
-  // A common trick is to make a dummy connection to the server itself.
-  auto dummy_socket = common::PosixSocket::create_connector("127.0.0.1", port_);
-  if (dummy_socket) {
-    dummy_socket->close_socket();
-  }
-}
+void Server::stop() { running_.store(false); }
 
-/**
- * @brief Shuts down the server.
- * Closes the listener socket and notifies all clients about the shutdown.
- */
 void Server::shutdown() {
   LOG_INFO(SERVER_COMPONENT, "Shutting down server...");
+  close(server_event_fd_);
   listener_->close_socket();
 
-  // Notify all clients about the server shutdown
   common::Message server_shutdown_message(common::MessageType::S2C_SERVER_SHUTDOWN, common::SERVER_ID,
                                           common::BROADCAST_ID, "Server is shutting down.");
   client_manager_.broadcast_message(server_shutdown_message, common::SERVER_ID);
@@ -115,19 +105,26 @@ void Server::handle_client_message(int fd) {
     return;
   }
 
-  std::vector<char> buffer(4096);
   auto &read_buffer = session->get_read_buffer();
+  size_t initial_buffer_size = 4096;
 
   while (true) {
-    auto result = session->get_socket()->receive_data(buffer);
+    size_t current_size = read_buffer.size();
+    read_buffer.resize(current_size + initial_buffer_size);
+
+    auto result = session->get_socket()->raw_receive(read_buffer.data() + current_size, initial_buffer_size);
+
     if (result.status == common::SocketStatus::OK) {
-      read_buffer.insert(read_buffer.end(), buffer.begin(), buffer.begin() + result.bytes_transferred);
-    } else if (result.status == common::SocketStatus::WOULD_BLOCK) {
-      // No more data available right now
-      break;
+      read_buffer.resize(current_size + result.bytes_transferred);
     } else {
-      handle_client_disconnection(fd);
-      return;
+      read_buffer.resize(current_size);
+      if (result.status == common::SocketStatus::WOULD_BLOCK) {
+        // No more data available right now
+        break;
+      } else {
+        handle_client_disconnection(fd);
+        return;
+      }
     }
   }
 
