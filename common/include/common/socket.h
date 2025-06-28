@@ -74,6 +74,7 @@ public:
 
   virtual SocketResult send_data(const std::vector<char> &data) = 0;
   virtual SocketResult receive_data(std::vector<char> &buffer) = 0;
+  virtual SocketResult raw_receive(char *buffer, size_t len) = 0;
   virtual void close_socket() = 0;
   virtual bool is_valid() const = 0;
   virtual int get_fd() const = 0;
@@ -97,6 +98,7 @@ public:
   // IStreamSocket methods
   SocketResult send_data(const std::vector<char> &data) override;
   SocketResult receive_data(std::vector<char> &buffer) override;
+  SocketResult raw_receive(char *buffer, size_t len) override;
 
   // IListeningSocket methods
   bool bind_socket(int port) override;

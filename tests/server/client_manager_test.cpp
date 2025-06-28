@@ -13,6 +13,7 @@ public:
   virtual ~MockStreamSocket() = default;
   MOCK_METHOD(SocketResult, send_data, (const std::vector<char> &), (override));
   MOCK_METHOD(SocketResult, receive_data, (std::vector<char> &), (override));
+  MOCK_METHOD(SocketResult, raw_receive, (char *, size_t), (override));
   MOCK_METHOD(void, close_socket, (), (override));
   MOCK_METHOD(bool, is_valid, (), (const, override));
   MOCK_METHOD(int, get_fd, (), (const, override));

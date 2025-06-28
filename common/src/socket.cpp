@@ -231,8 +231,21 @@ SocketResult PosixSocket::receive_data(std::vector<char> &buffer) {
   if (!is_valid())
     return {SocketStatus::ERROR, 0};
 
-  ssize_t bytes_received = ::recv(socket_fd_, buffer.data(), buffer.capacity(), 0);
-  
+  return raw_receive(buffer.data(), buffer.capacity());
+}
+
+/**
+ * @brief Receives data from the socket into a raw buffer.
+ * @param buffer The raw buffer to receive data into.
+ * @param len The length of the buffer.
+ * @return A SocketResult indicating the status of the operation and the number of bytes received.
+ */
+SocketResult PosixSocket::raw_receive(char *buffer, size_t len) {
+  if (!is_valid())
+    return {SocketStatus::ERROR, 0};
+
+  ssize_t bytes_received = ::recv(socket_fd_, buffer, len, 0);
+
   if (bytes_received < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return {SocketStatus::WOULD_BLOCK, 0};
@@ -241,7 +254,7 @@ SocketResult PosixSocket::receive_data(std::vector<char> &buffer) {
     LOG_ERROR(COMMON_POSIX_SOCKET_COMPONENT, "Failed to receive data: {}", strerror(errno));
     return {SocketStatus::ERROR, 0};
   }
-  
+
   if (bytes_received == 0) {
     return {SocketStatus::CLOSED, 0};
   }
